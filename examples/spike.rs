@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     let pubkey = att.credential_publickey.der.clone();
     println!("Credential ID: {} bytes, public key: {} bytes", cred_id.len(), pubkey.len());
 
-    //2. login: trhe key will sign a fresh challenge
+    //2. login: the key will sign a fresh challenge
     let challenge: [u8; 32] = rand::random();
     let args = GetAssertionArgsBuilder::new(RP_ID, &challenge)
         .pin(&pin)

@@ -9,7 +9,7 @@ const RP_ID: &str = "fidroh.local";
 
 fn main() -> Result<()> {
     // Check if the FIDO2 key supports Ed25519
-    let pin = rpassword::prompt_password("FIDO2 PIN: ")?;
+    let _pin = rpassword::prompt_password("FIDO2 PIN: ")?;
     let device = FidoKeyHidFactory::create(&Cfg::init()).context("No FIDO2 security key found")?;
     let info = device.get_info()?;
     println!("FIDO2 key info: {:#?}", info);
@@ -17,13 +17,13 @@ fn main() -> Result<()> {
         bail!("FIDO2 key does not support Ed25519");
     } */
     // Register if it does, and then sign a challenge and verify the signature
-    let pin = rpassword::prompt_password("FIDO2 PIN: ")?;
+    let _pin = rpassword::prompt_password("FIDO2 PIN: ")?;
     let reg_challenge: [u8; 32] = rand::random();
     println!("Touch FIDO2 key to register (Ed25519)...");
     let att = device.make_credential_with_key_type(
         RP_ID,
         &reg_challenge,
-        Some(pin.as_str()),
+        Some(_pin.as_str()),
         Some(CredentialSupportedKeyType::Ed25519),
     )?;
     let cred_id = att.credential_descriptor.id.clone();
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     // Sign and verify a challenge
     let challenge: [u8; 32] = rand::random();
     let args = GetAssertionArgsBuilder::new(RP_ID, &challenge)
-        .pin(&pin)
+        .pin(&_pin)
         .credential_id(&cred_id)
         .build();
     println!("Touch the key to sign...");

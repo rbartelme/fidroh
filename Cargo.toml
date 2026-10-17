@@ -14,4 +14,5 @@ rand = "0.10.3"
 rpassword = "7.5.4"
 serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.11.1"
+thiserror = "2.0.21"
 tokio = { version = "1.53.3", features = ["full"] }

@@ -110,6 +110,73 @@ fn verify_eddsa(public_key: &[u8], msg: &[u8], signature: &[u8]) -> Result<(), V
 mod tests {
     use super::*;
 
+    // ---- the fake authenticator ----
+
+    /// Builds auth_data and signs it exactly like a YubiKey would.
+    /// Each field can be changed to produce one specific kind of bad assertion.
+    struct SoftKey {
+        alg: Alg,
+        seed: u8,          // different seed = different key pair
+        flags: u8,
+        counter: u32,
+        rp_id: &'static str,
+    }
+
+    impl SoftKey {
+        fn new(alg: Alg) -> Self {
+            SoftKey { alg, seed: 7, flags: FLAG_UP | FLAG_UV, counter: 1, rp_id: RP_ID }
+        }
+
+        /// The public key, in the same format the store will keep.
+        fn public_key(&self) -> Vec<u8> {
+            match self.alg {
+                Alg::Es256 => es_key(self.seed).verifying_key().to_sec1_point(false).as_bytes().to_vec(),
+                Alg::EdDsa => ed_key(self.seed).verifying_key().to_bytes().to_vec(),
+            }
+        }
+
+        /// What the server would have stored for this key.
+        fn credential(&self, sign_count: u32) -> StoredCredential {
+            StoredCredential { alg: self.alg, public_key: self.public_key(), sign_count }
+        }
+
+        /// Signs `challenge` the way a real authenticator does.
+        fn sign(&self, challenge: &[u8]) -> Assertion {
+            let mut auth_data = Sha256::digest(self.rp_id.as_bytes()).to_vec();
+            auth_data.push(self.flags);
+            auth_data.extend_from_slice(&self.counter.to_be_bytes());
+
+            let mut msg = auth_data.clone();
+            msg.extend_from_slice(&Sha256::digest(challenge));
+
+            let signature = match self.alg {
+                Alg::Es256 => {
+                    let sig: p256::ecdsa::Signature =
+                        p256::ecdsa::signature::Signer::sign(&es_key(self.seed), &msg);
+                    sig.to_der().as_bytes().to_vec()
+                }
+                Alg::EdDsa => ed25519_dalek::Signer::sign(&ed_key(self.seed), &msg).to_bytes().to_vec(),
+            };
+            Assertion { credential_id: vec![1, 2, 3], auth_data, signature }
+        }
+    }
+
+    // Fixed seeds instead of randomness: the same test always uses the same keys.
+    fn es_key(seed: u8) -> p256::ecdsa::SigningKey {
+        p256::ecdsa::SigningKey::from_bytes(&[seed; 32].into()).unwrap()
+    }
+    fn ed_key(seed: u8) -> ed25519_dalek::SigningKey {
+        ed25519_dalek::SigningKey::from_bytes(&[seed; 32])
+    }
+
+    const ALGS: [Alg; 2] = [Alg::Es256, Alg::EdDsa];
+
+    fn challenge() -> Vec<u8> {
+        binding(&[1; 32], &[2; 32], &[3; 32])
+    }
+
+    // ---- tests ----
+
     #[test]
     fn binding_is_104_bytes_and_ordered() {
         let b = binding(&[1; 32], &[2; 32], &[3; 32]);
@@ -118,5 +185,106 @@ mod tests {
         assert_eq!(&b[8..40], &[1; 32]);
         assert_eq!(&b[40..72], &[2; 32]);
         assert_eq!(&b[72..], &[3; 32]);
+    }
+
+    #[test]
+    fn valid_assertion_passes() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let a = key.sign(&challenge());
+            assert_eq!(verify(&a, &key.credential(0), RP_ID, &challenge()), Ok(1));
+        }
+    }
+
+    #[test]
+    fn wrong_laptop_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let a = key.sign(&challenge());
+            let other_laptop = binding(&[1; 32], &[9; 32], &[3; 32]);
+            assert_eq!(
+                verify(&a, &key.credential(0), RP_ID, &other_laptop),
+                Err(VerifyError::BadSignature)
+            );
+        }
+    }
+    #[test]
+    fn missing_pin_fails() {
+        for alg in ALGS {
+            let mut key = SoftKey::new(alg);
+            key.flags &= !FLAG_UV;
+            let a = key.sign(&challenge());
+            assert_eq!(
+                verify(&a, &key.credential(0), RP_ID, &challenge()),
+                Err(VerifyError::NoPin)
+            );
+        }
+    }
+    #[test]
+    fn missing_touch_fails() {
+        for alg in ALGS {
+            let mut key = SoftKey::new(alg);
+            key.flags &= !FLAG_UP;
+            let a = key.sign(&challenge());
+            assert_eq!(
+                verify(&a, &key.credential(0), RP_ID, &challenge()),
+                Err(VerifyError::NoTouch)
+            );
+        }
+    }
+    #[test]
+    fn replayed_counter_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let a = key.sign(&challenge());
+            assert_eq!(
+                verify(&a, &key.credential(1), RP_ID, &challenge()),
+                Err(VerifyError::Counter)
+            );
+        }
+    }
+    #[test]
+    fn counterless_key_passes() {
+        for alg in ALGS {
+            let mut key = SoftKey::new(alg);
+            key.counter = 0;
+            let a = key.sign(&challenge());
+            assert_eq!(verify(&a, &key.credential(0), RP_ID, &challenge()), Ok(0));
+        }
+    }
+    #[test]
+    fn wrong_rp_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let a = key.sign(&challenge());
+            assert_eq!(
+                verify(&a, &key.credential(0), "wrong", &challenge()),
+                Err(VerifyError::RpId)
+            );
+        }
+    }
+    #[test]
+    fn wrong_key_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg); // seed 7 signs...
+            let a = key.sign(&challenge());
+            let mut other = SoftKey::new(alg);
+            other.seed = 8; // ...but the server has seed 8's public key
+            assert_eq!(
+                verify(&a, &other.credential(0), RP_ID, &challenge()),
+                Err(VerifyError::BadSignature)
+            );
+        }
+    }
+
+    #[test]
+    fn corrupted_key_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let a = key.sign(&challenge());
+            let mut cred = key.credential(0);
+            cred.public_key.pop(); // one byte short: not a valid key in either format
+            assert_eq!(verify(&a, &cred, RP_ID, &challenge()), Err(VerifyError::BadKey));
+        }
     }
 }

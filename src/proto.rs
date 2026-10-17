@@ -25,6 +25,9 @@ pub enum Msg {
     AuthResult { ok: bool },
     OpenRoute { name: String },
     RouteResult { ok: bool, reason: String },
+    /// INSECURE, development only: the client hands the server its public key.
+    /// Removed when enrollment happens on the server's own console.
+    DevRegister { alg: Alg, credential_id: Vec<u8>, public_key: Vec<u8> },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -122,5 +125,13 @@ mod tests {
         write_msg(&mut a, &second).await.unwrap();
         assert_eq!(read_msg(&mut b).await.unwrap(), first);
         assert_eq!(read_msg(&mut b).await.unwrap(), second);
+    }
+
+    #[tokio::test]
+    async fn roundtrip_dev_register() {
+        let (mut a, mut b) = tokio::io::duplex(64 * 1024);
+        let sent = Msg::DevRegister { alg: Alg::EdDsa, credential_id: vec![1; 64], public_key: vec![2; 32] };
+        write_msg(&mut a, &sent).await.unwrap();
+        assert_eq!(read_msg(&mut b).await.unwrap(), sent);
     }
 }

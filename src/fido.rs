@@ -287,4 +287,32 @@ mod tests {
             assert_eq!(verify(&a, &cred, RP_ID, &challenge()), Err(VerifyError::BadKey));
         }
     }
+
+        #[test]
+    fn wrong_server_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let a = key.sign(&challenge()); // signed for server [3; 32]
+            let other_server = binding(&[1; 32], &[2; 32], &[9; 32]);
+            assert_eq!(
+                verify(&a, &key.credential(0), RP_ID, &other_server),
+                Err(VerifyError::BadSignature)
+            );
+        }
+    }
+
+    #[test]
+    fn tampered_signature_fails() {
+        for alg in ALGS {
+            let key = SoftKey::new(alg);
+            let mut a = key.sign(&challenge());
+            let n = a.signature.len();
+            a.signature[n - 1] ^= 1; // flip one bit in the last byte
+            let r = verify(&a, &key.credential(0), RP_ID, &challenge());
+            assert!(
+                matches!(r, Err(VerifyError::BadSignature | VerifyError::BadSigFormat)),
+                "got {r:?}"
+            );
+        }
+    }
 }

@@ -20,7 +20,7 @@ pub struct Assertion {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Msg {
     Hello { version: u16 },
-    Challenge { nonce: Vec<u8>, allow_credentials: Vec<Vec<u8>> },
+    Challenge { nonce: [u8; 32], allow_credentials: Vec<Vec<u8>> },
     Assertion(Assertion),
     AuthResult { ok: bool },
     OpenRoute { name: String },

@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use iroh::EndpointId;
 use tokio::net::TcpListener;
-use tracing::{debug, info, warn};
+use tracing::warn;
 
 use crate::enroll::Enrollment;
 use crate::fido::binding;

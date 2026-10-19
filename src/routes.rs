@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use tokio::net::TcpStream;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::pipe::splice;
 use crate::proto::{read_msg, write_msg, Msg};

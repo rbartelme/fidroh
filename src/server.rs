@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use iroh::endpoint::Connection;
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use tokio::net::TcpStream;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::enroll::Enrollment;
 use crate::fido::{binding, verify, RP_ID};

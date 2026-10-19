@@ -11,7 +11,10 @@ use crate::keys::load_or_create;
 /// An iroh endpoint whose identity comes from <data-dir>/secret.key.
 pub async fn bind_endpoint(data_dir: &Path) -> Result<Endpoint> {
     let key = load_or_create(&data_dir.join("secret.key"))?;
-    Ok(Endpoint::builder(presets::N0).secret_key(key).bind().await?)
+    Ok(Endpoint::builder(presets::N0)
+        .secret_key(key)
+        .bind()
+        .await?)
 }
 
 /// This machine's endpoint id, without starting anything.

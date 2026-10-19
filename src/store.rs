@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::fido::StoredCredential;
 use crate::proto::Alg;
@@ -97,7 +97,13 @@ impl Store {
         tx.execute(
             "INSERT INTO credentials (credential_id, endpoint_id, alg, public_key, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![credential_id, &endpoint_id[..], alg_name(alg), public_key, now()],
+            params![
+                credential_id,
+                &endpoint_id[..],
+                alg_name(alg),
+                public_key,
+                now()
+            ],
         )?;
         tx.execute(
             "INSERT INTO audit_log (ts, endpoint_id, event, detail) VALUES (?1, ?2, 'enroll', ?3)",
@@ -144,14 +150,26 @@ impl Store {
         let mut out = Vec::new();
         for row in rows {
             let (id, alg, public_key, sign_count) = row?;
-            out.push((id, StoredCredential { alg: parse_alg(&alg)?, public_key, sign_count }));
+            out.push((
+                id,
+                StoredCredential {
+                    alg: parse_alg(&alg)?,
+                    public_key,
+                    sign_count,
+                },
+            ));
         }
         Ok(out)
     }
 
     /// Stores a new counter, but only if the stored one is still `old`.
     /// If two logins race with the same counter, exactly one wins.
-    pub fn bump_counter(&self, credential_id: &[u8], old: u32, new: u32) -> Result<bool, StoreError> {
+    pub fn bump_counter(
+        &self,
+        credential_id: &[u8],
+        old: u32,
+        new: u32,
+    ) -> Result<bool, StoreError> {
         let db = self.db.lock().unwrap();
         let changed = db.execute(
             "UPDATE credentials SET sign_count = ?3, last_used_at = ?4
@@ -164,7 +182,10 @@ impl Store {
     /// Removes a device and (by cascade) all its credentials. Returns false if it didn't exist.
     pub fn remove_device(&self, endpoint_id: &[u8; 32]) -> Result<bool, StoreError> {
         let db = self.db.lock().unwrap();
-        let changed = db.execute("DELETE FROM devices WHERE endpoint_id = ?1", params![&endpoint_id[..]])?;
+        let changed = db.execute(
+            "DELETE FROM devices WHERE endpoint_id = ?1",
+            params![&endpoint_id[..]],
+        )?;
         Ok(changed == 1)
     }
 
@@ -173,14 +194,24 @@ impl Store {
         let db = self.db.lock().unwrap();
         let mut stmt = db.prepare("SELECT endpoint_id, name, routes FROM devices ORDER BY name")?;
         let rows = stmt.query_map([], |r| {
-            Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+            Ok((
+                r.get::<_, Vec<u8>>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
         })?;
         let mut out = Vec::new();
         for row in rows {
             let (id, name, routes) = row?;
-            let endpoint_id: [u8; 32] =
-                id.as_slice().try_into().map_err(|_| StoreError::BadId(id.len()))?;
-            out.push(Device { endpoint_id, name, routes: split_routes(&routes) });
+            let endpoint_id: [u8; 32] = id
+                .as_slice()
+                .try_into()
+                .map_err(|_| StoreError::BadId(id.len()))?;
+            out.push(Device {
+                endpoint_id,
+                name,
+                routes: split_routes(&routes),
+            });
         }
         Ok(out)
     }
@@ -196,7 +227,10 @@ impl Store {
 }
 
 fn now() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 fn alg_name(alg: Alg) -> &'static str {
@@ -215,7 +249,10 @@ fn parse_alg(s: &str) -> Result<Alg, StoreError> {
 }
 
 fn split_routes(s: &str) -> Vec<String> {
-    s.split(',').filter(|r| !r.is_empty()).map(String::from).collect()
+    s.split(',')
+        .filter(|r| !r.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 #[cfg(test)]
@@ -232,7 +269,8 @@ mod tests {
     /// A fresh in-memory store with one laptop enrolled (EdDSA credential "cred-a").
     fn enrolled() -> Store {
         let s = Store::in_memory().unwrap();
-        s.enroll(&LAPTOP, "laptop", &web(), b"cred-a", Alg::EdDsa, &[7; 32]).unwrap();
+        s.enroll(&LAPTOP, "laptop", &web(), b"cred-a", Alg::EdDsa, &[7; 32])
+            .unwrap();
         s
     }
 
@@ -256,12 +294,13 @@ mod tests {
         assert!(s.device(&OTHER).unwrap().is_none());
         assert!(s.credentials(&OTHER).unwrap().is_empty());
     }
-    
+
     #[test]
     fn backup_key() {
         let s = enrolled();
         // A second FIDO2 key from the same laptop, new credential
-        s.enroll(&LAPTOP, "laptop", &web(), b"cred-b", Alg::Es256, &[8; 65]).unwrap();
+        s.enroll(&LAPTOP, "laptop", &web(), b"cred-b", Alg::Es256, &[8; 65])
+            .unwrap();
         assert_eq!(s.credentials(&LAPTOP).unwrap().len(), 2);
     }
 
@@ -292,7 +331,8 @@ mod tests {
     #[test]
     fn list_is_sorted() {
         let s = enrolled();
-        s.enroll(&OTHER, "desktop", &web(), b"cred-o", Alg::EdDsa, &[9; 32]).unwrap();
+        s.enroll(&OTHER, "desktop", &web(), b"cred-o", Alg::EdDsa, &[9; 32])
+            .unwrap();
         let names: Vec<String> = s.list().unwrap().into_iter().map(|d| d.name).collect();
         assert_eq!(names, vec!["desktop", "laptop"]);
     }

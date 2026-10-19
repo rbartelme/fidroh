@@ -24,22 +24,28 @@ pub fn load_or_create(path: &Path) -> Result<SecretKey, KeyError> {
     if path.exists() {
         let mode = fs::metadata(path)?.permissions().mode();
         if mode & 0o077 != 0 {
-            return Err(KeyError::TooOpen {path: shown});
+            return Err(KeyError::TooOpen { path: shown });
         }
         let bytes = fs::read(path)?;
         let arr: [u8; 32] = bytes
             .as_slice()
             .try_into()
-            .map_err(|_| KeyError::WrongLength { path: shown, len: bytes.len() })?;
-        return Ok(SecretKey::from_bytes(&arr))
-        
+            .map_err(|_| KeyError::WrongLength {
+                path: shown,
+                len: bytes.len(),
+            })?;
+        return Ok(SecretKey::from_bytes(&arr));
     }
 
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
-    } 
+    }
     let bytes: [u8; 32] = rand::random();
-    let mut file = OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
     file.write_all(&bytes)?;
     Ok(SecretKey::from_bytes(&bytes))
 }
@@ -72,7 +78,10 @@ mod tests {
         let path = dir.path().join("secret.key");
         load_or_create(&path).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(matches!(load_or_create(&path), Err(KeyError::TooOpen { .. })));
+        assert!(matches!(
+            load_or_create(&path),
+            Err(KeyError::TooOpen { .. })
+        ));
     }
 
     #[test]
@@ -81,6 +90,9 @@ mod tests {
         let path = dir.path().join("secret.key");
         fs::write(&path, [0u8; 31]).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(matches!(load_or_create(&path), Err(KeyError::WrongLength { len: 31, .. })));
+        assert!(matches!(
+            load_or_create(&path),
+            Err(KeyError::WrongLength { len: 31, .. })
+        ));
     }
 }

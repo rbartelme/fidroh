@@ -19,12 +19,24 @@ pub struct Assertion {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Msg {
-    Hello { version: u16 },
-    Challenge { nonce: [u8; 32], allow_credentials: Vec<Vec<u8>> },
+    Hello {
+        version: u16,
+    },
+    Challenge {
+        nonce: [u8; 32],
+        allow_credentials: Vec<Vec<u8>>,
+    },
     Assertion(Assertion),
-    AuthResult { ok: bool },
-    OpenRoute { name: String },
-    RouteResult { ok: bool, reason: String },
+    AuthResult {
+        ok: bool,
+    },
+    OpenRoute {
+        name: String,
+    },
+    RouteResult {
+        ok: bool,
+        reason: String,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -59,20 +71,29 @@ pub async fn write_msg<W: AsyncWrite + Unpin>(w: &mut W, msg: &Msg) -> Result<()
 
 /// Reads one message: a 4-byte big-endian length, then the postcard bytes.
 pub async fn read_msg<R: AsyncRead + Unpin>(r: &mut R) -> Result<Msg, FrameError> {
-    let len = r.read_u32().await.map_err(|e| eof_as(e, FrameError::Closed))?;
+    let len = r
+        .read_u32()
+        .await
+        .map_err(|e| eof_as(e, FrameError::Closed))?;
     if len > MAX_FRAME {
         return Err(FrameError::TooLarge(len));
     }
     let mut buf = vec![0u8; len as usize];
-    r.read_exact(&mut buf).await.map_err(|e| eof_as(e, FrameError::Truncated))?;
+    r.read_exact(&mut buf)
+        .await
+        .map_err(|e| eof_as(e, FrameError::Truncated))?;
     let msg: Msg = postcard::from_bytes(&buf)?;
     Ok(msg)
 }
 
 /// An early end of stream becomes `on_eof`; any other I/O error stays an I/O error.
 fn eof_as(e: std::io::Error, on_eof: FrameError) -> FrameError {
-       if e.kind() == std::io::ErrorKind::UnexpectedEof { on_eof } else { FrameError::Io(e) }
-   }
+    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+        on_eof
+    } else {
+        FrameError::Io(e)
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -106,13 +127,13 @@ mod tests {
     #[tokio::test]
     async fn truncated_frame() {
         let (mut a, mut b) = tokio::io::duplex(64 * 1024);
-        a.write_u32(100).await.unwrap();        // promise 100 bytes...
+        a.write_u32(100).await.unwrap(); // promise 100 bytes...
         a.write_all(&[0u8; 10]).await.unwrap(); // ...deliver 10...
-        drop(a);                                // ...then hang up
+        drop(a); // ...then hang up
         let got = read_msg(&mut b).await;
         assert!(matches!(got, Err(FrameError::Truncated)));
     }
-    
+
     #[tokio::test]
     async fn two_frames_back_to_back() {
         let (mut a, mut b) = tokio::io::duplex(64 * 1024);
@@ -123,5 +144,4 @@ mod tests {
         assert_eq!(read_msg(&mut b).await.unwrap(), first);
         assert_eq!(read_msg(&mut b).await.unwrap(), second);
     }
-
 }

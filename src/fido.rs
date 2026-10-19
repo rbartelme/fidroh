@@ -89,9 +89,8 @@ pub fn verify(
 }
 
 fn verify_es256(public_key: &[u8], msg: &[u8], signature: &[u8]) -> Result<(), VerifyError> {
-    use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
-    let key = VerifyingKey::from_sec1_bytes(public_key)
-        .map_err(|_| VerifyError::BadKey)?;
+    use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
+    let key = VerifyingKey::from_sec1_bytes(public_key).map_err(|_| VerifyError::BadKey)?;
     let sig = Signature::from_der(signature)
         .map_err(|_| VerifyError::BadSigFormat)?
         .normalize_s();
@@ -103,7 +102,8 @@ fn verify_eddsa(public_key: &[u8], msg: &[u8], signature: &[u8]) -> Result<(), V
     let bytes: [u8; 32] = public_key.try_into().map_err(|_| VerifyError::BadKey)?;
     let key = VerifyingKey::from_bytes(&bytes).map_err(|_| VerifyError::BadKey)?;
     let sig = Signature::from_slice(signature).map_err(|_| VerifyError::BadSigFormat)?;
-    key.verify_strict(msg, &sig).map_err(|_| VerifyError::BadSignature)
+    key.verify_strict(msg, &sig)
+        .map_err(|_| VerifyError::BadSignature)
 }
 
 #[cfg(test)]
@@ -116,7 +116,7 @@ mod tests {
     /// Each field can be changed to produce one specific kind of bad assertion.
     struct SoftKey {
         alg: Alg,
-        seed: u8,          // different seed = different key pair
+        seed: u8, // different seed = different key pair
         flags: u8,
         counter: u32,
         rp_id: &'static str,
@@ -124,20 +124,34 @@ mod tests {
 
     impl SoftKey {
         fn new(alg: Alg) -> Self {
-            SoftKey { alg, seed: 7, flags: FLAG_UP | FLAG_UV, counter: 1, rp_id: RP_ID }
+            SoftKey {
+                alg,
+                seed: 7,
+                flags: FLAG_UP | FLAG_UV,
+                counter: 1,
+                rp_id: RP_ID,
+            }
         }
 
         /// The public key, in the same format the store will keep.
         fn public_key(&self) -> Vec<u8> {
             match self.alg {
-                Alg::Es256 => es_key(self.seed).verifying_key().to_sec1_point(false).as_bytes().to_vec(),
+                Alg::Es256 => es_key(self.seed)
+                    .verifying_key()
+                    .to_sec1_point(false)
+                    .as_bytes()
+                    .to_vec(),
                 Alg::EdDsa => ed_key(self.seed).verifying_key().to_bytes().to_vec(),
             }
         }
 
         /// What the server would have stored for this key.
         fn credential(&self, sign_count: u32) -> StoredCredential {
-            StoredCredential { alg: self.alg, public_key: self.public_key(), sign_count }
+            StoredCredential {
+                alg: self.alg,
+                public_key: self.public_key(),
+                sign_count,
+            }
         }
 
         /// Signs `challenge` the way a real authenticator does.
@@ -155,9 +169,15 @@ mod tests {
                         p256::ecdsa::signature::Signer::sign(&es_key(self.seed), &msg);
                     sig.to_der().as_bytes().to_vec()
                 }
-                Alg::EdDsa => ed25519_dalek::Signer::sign(&ed_key(self.seed), &msg).to_bytes().to_vec(),
+                Alg::EdDsa => ed25519_dalek::Signer::sign(&ed_key(self.seed), &msg)
+                    .to_bytes()
+                    .to_vec(),
             };
-            Assertion { credential_id: vec![1, 2, 3], auth_data, signature }
+            Assertion {
+                credential_id: vec![1, 2, 3],
+                auth_data,
+                signature,
+            }
         }
     }
 
@@ -284,11 +304,14 @@ mod tests {
             let a = key.sign(&challenge());
             let mut cred = key.credential(0);
             cred.public_key.pop(); // one byte short: not a valid key in either format
-            assert_eq!(verify(&a, &cred, RP_ID, &challenge()), Err(VerifyError::BadKey));
+            assert_eq!(
+                verify(&a, &cred, RP_ID, &challenge()),
+                Err(VerifyError::BadKey)
+            );
         }
     }
 
-        #[test]
+    #[test]
     fn wrong_server_fails() {
         for alg in ALGS {
             let key = SoftKey::new(alg);
@@ -310,7 +333,10 @@ mod tests {
             a.signature[n - 1] ^= 1; // flip one bit in the last byte
             let r = verify(&a, &key.credential(0), RP_ID, &challenge());
             assert!(
-                matches!(r, Err(VerifyError::BadSignature | VerifyError::BadSigFormat)),
+                matches!(
+                    r,
+                    Err(VerifyError::BadSignature | VerifyError::BadSigFormat)
+                ),
                 "got {r:?}"
             );
         }

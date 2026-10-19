@@ -70,18 +70,27 @@ mod tests {
     #[test]
     fn wrong_prefix_rejected() {
         let token = sample().to_token().replace("fidroh1:", "fidroh2:");
-        assert!(matches!(Enrollment::from_token(&token), Err(TokenError::BadPrefix)));
+        assert!(matches!(
+            Enrollment::from_token(&token),
+            Err(TokenError::BadPrefix)
+        ));
     }
 
     #[test]
     fn bad_hex_rejected() {
-        assert!(matches!(Enrollment::from_token("fidroh1:zz"), Err(TokenError::BadHex)));
+        assert!(matches!(
+            Enrollment::from_token("fidroh1:zz"),
+            Err(TokenError::BadHex)
+        ));
     }
 
     #[test]
     fn truncated_token_rejected() {
         let token = sample().to_token();
         let cut = &token[..token.len() - 2]; // lose the last byte (2 hex chars)
-        assert!(matches!(Enrollment::from_token(cut), Err(TokenError::Decode(_))));
+        assert!(matches!(
+            Enrollment::from_token(cut),
+            Err(TokenError::Decode(_))
+        ));
     }
 }

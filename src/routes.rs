@@ -3,13 +3,13 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use tokio::net::TcpStream;
 use tracing::{debug, warn};
 
 use crate::pipe::splice;
-use crate::proto::{read_msg, write_msg, Msg};
+use crate::proto::{Msg, read_msg, write_msg};
 
 /// Server side: each new stream on this connection is one browser TCP connection on the laptop.
 pub async fn serve_streams(conn: Connection, upstream: SocketAddr, routes: Vec<String>) {
@@ -36,7 +36,10 @@ async fn handle_stream(
     };
     // Only "web" exists for now, and only for laptops enrolled with it.
     if name != "web" || !routes.contains(&name) {
-        let reply = Msg::RouteResult { ok: false, reason: "no such route".into() };
+        let reply = Msg::RouteResult {
+            ok: false,
+            reason: "no such route".into(),
+        };
         write_msg(&mut send, &reply).await?;
         send.finish()?;
         return Ok(());
@@ -45,13 +48,23 @@ async fn handle_stream(
         Ok(tcp) => tcp,
         Err(e) => {
             eprintln!("upstream {upstream}: {e}"); // the detail stays in the server log
-            let reply = Msg::RouteResult { ok: false, reason: "upstream unavailable".into() };
+            let reply = Msg::RouteResult {
+                ok: false,
+                reason: "upstream unavailable".into(),
+            };
             write_msg(&mut send, &reply).await?;
             send.finish()?;
             return Ok(());
         }
     };
-    write_msg(&mut send, &Msg::RouteResult { ok: true, reason: String::new() }).await?;
+    write_msg(
+        &mut send,
+        &Msg::RouteResult {
+            ok: true,
+            reason: String::new(),
+        },
+    )
+    .await?;
     let (up, down) = splice(tcp, send, recv).await?; // from here on: raw bytes, no more frames
     debug!(up, down, "stream closed");
     Ok(())

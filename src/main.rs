@@ -59,7 +59,9 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let dir = match cli.data_dir {
         Some(dir) => dir,
-        None => dirs::data_dir().context("no home data folder found; pass --data-dir")?.join("fidroh"),
+        None => dirs::data_dir()
+            .context("no home data folder found; pass --data-dir")?
+            .join("fidroh"),
     };
     match cli.cmd {
         Cmd::Id => {

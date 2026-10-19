@@ -21,7 +21,11 @@ pub fn register(pin: &str) -> Result<(Alg, Vec<u8>, Vec<u8>)> {
     let challenge: [u8; 32] = rand::random();
     eprintln!("Touch your security key to register ({alg:?})...");
     let att = device.make_credential_with_key_type(RP_ID, &challenge, Some(pin), Some(key_type))?;
-    Ok((alg, att.credential_descriptor.id.clone(), att.credential_publickey.der.clone()))
+    Ok((
+        alg,
+        att.credential_descriptor.id.clone(),
+        att.credential_publickey.der.clone(),
+    ))
 }
 
 /// Signs `challenge` with one credential. Blocks until the key is touched.
@@ -32,6 +36,13 @@ pub fn sign(pin: &str, challenge: &[u8], credential_id: &[u8]) -> Result<Asserti
         .credential_id(credential_id)
         .build();
     eprintln!("Touch your security key to log in...");
-    let a = device.get_assertion_with_args(&args)?.pop().context("no assertion returned")?;
-    Ok(Assertion { credential_id: credential_id.to_vec(), auth_data: a.auth_data, signature: a.signature })
+    let a = device
+        .get_assertion_with_args(&args)?
+        .pop()
+        .context("no assertion returned")?;
+    Ok(Assertion {
+        credential_id: credential_id.to_vec(),
+        auth_data: a.auth_data,
+        signature: a.signature,
+    })
 }

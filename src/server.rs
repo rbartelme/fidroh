@@ -6,16 +6,16 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use iroh::endpoint::Connection;
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use tokio::net::TcpStream;
 use tracing::{info, warn};
 
 use crate::enroll::Enrollment;
-use crate::fido::{binding, verify, RP_ID};
+use crate::fido::{RP_ID, binding, verify};
 use crate::node::bind_endpoint;
-use crate::proto::{read_msg, write_msg, Msg, ALPN};
+use crate::proto::{ALPN, Msg, read_msg, write_msg};
 use crate::routes::serve_streams;
 use crate::store::Store;
 
@@ -76,7 +76,14 @@ impl Gate {
 
         let nonce: [u8; 32] = rand::random();
         let allow_credentials = creds.iter().map(|(id, _)| id.clone()).collect();
-        write_msg(&mut send, &Msg::Challenge { nonce, allow_credentials }).await?;
+        write_msg(
+            &mut send,
+            &Msg::Challenge {
+                nonce,
+                allow_credentials,
+            },
+        )
+        .await?;
 
         let Msg::Assertion(a) = read_msg(&mut recv).await? else {
             bail!("expected Assertion");
@@ -98,7 +105,9 @@ impl Gate {
 
         // 3. Save the new counter, only if nobody else logged in with it meanwhile.
         if new_count != cred.sign_count
-            && !self.store.bump_counter(&a.credential_id, cred.sign_count, new_count)?
+            && !self
+                .store
+                .bump_counter(&a.credential_id, cred.sign_count, new_count)?
         {
             bail!("sign counter changed during login (possible replay)");
         }
@@ -112,7 +121,11 @@ pub async fn serve(data_dir: &Path, upstream: SocketAddr) -> Result<()> {
     let store = Store::open(&data_dir.join("fidroh.db"))?;
     let ep = bind_endpoint(data_dir).await?;
     ep.online().await;
-    let gate = Gate { server_id: *ep.id().as_bytes(), store: Arc::new(store), upstream };
+    let gate = Gate {
+        server_id: *ep.id().as_bytes(),
+        store: Arc::new(store),
+        upstream,
+    };
     println!("serving, endpoint id:\n{}", ep.id());
     info!(%upstream, "forwarding authenticated streams");
     if TcpStream::connect(upstream).await.is_err() {
@@ -128,7 +141,14 @@ pub fn enroll(data_dir: &Path, name: &str, token: &str) -> Result<()> {
     let e = Enrollment::from_token(token)?;
     fs::create_dir_all(data_dir)?;
     let store = Store::open(&data_dir.join("fidroh.db"))?;
-    store.enroll(&e.endpoint_id, name, &["web".to_string()], &e.credential_id, e.alg, &e.public_key)?;
+    store.enroll(
+        &e.endpoint_id,
+        name,
+        &["web".to_string()],
+        &e.credential_id,
+        e.alg,
+        &e.public_key,
+    )?;
     println!("enrolled {name} ({:?} key)", e.alg);
     Ok(())
 }

@@ -6,6 +6,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use iroh::EndpointId;
 use tokio::net::TcpListener;
+use tracing::{debug, info, warn};
 
 use crate::enroll::Enrollment;
 use crate::fido::binding;
@@ -70,7 +71,7 @@ pub async fn connect(data_dir: &Path, server: EndpointId, listen: SocketAddr) ->
                 let conn = conn.clone();
                 tokio::spawn(async move {
                     if let Err(e) = forward_one(conn, tcp).await {
-                        eprintln!("stream error: {e:#}");
+                        warn!("stream error: {e:#}");
                     }
                 });
             }

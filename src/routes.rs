@@ -6,6 +6,7 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use tokio::net::TcpStream;
+use tracing::{debug, info, warn};
 
 use crate::pipe::splice;
 use crate::proto::{read_msg, write_msg, Msg};
@@ -17,7 +18,7 @@ pub async fn serve_streams(conn: Connection, upstream: SocketAddr, routes: Vec<S
         let routes = routes.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_stream(send, recv, upstream, &routes).await {
-                eprintln!("stream error: {e:#}");
+                warn!("stream error: {e:#}");
             }
         });
     }
@@ -52,7 +53,7 @@ async fn handle_stream(
     };
     write_msg(&mut send, &Msg::RouteResult { ok: true, reason: String::new() }).await?;
     let (up, down) = splice(tcp, send, recv).await?; // from here on: raw bytes, no more frames
-    eprintln!("stream closed: {up} bytes up, {down} bytes down");
+    debug!(up, down, "stream closed");
     Ok(())
 }
 

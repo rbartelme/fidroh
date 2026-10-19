@@ -10,6 +10,7 @@ use anyhow::{bail, Context, Result};
 use iroh::endpoint::Connection;
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use tokio::net::TcpStream;
+use tracing::{debug, info, warn};
 
 use crate::enroll::Enrollment;
 use crate::fido::{binding, verify, RP_ID};
@@ -34,19 +35,19 @@ impl ProtocolHandler for Gate {
         match tokio::time::timeout(Duration::from_secs(90), self.login(&conn)).await {
             Ok(Ok(routes)) => {
                 self.store.audit(&peer, "login", "ok");
-                println!("{who}: logged in, routes {routes:?}");
+                info!(peer = who, ?routes, "logged in");
                 serve_streams(conn.clone(), self.upstream, routes).await;
-                println!("{who}: disconnected");
+                info!(peer = who, "disconnected");
             }
             Ok(Err(e)) => {
                 self.store.audit(&peer, "login_failed", &format!("{e:#}"));
-                println!("{who}: denied: {e:#}"); // the reason stays in OUR log
+                warn!(peer = who, "denied: {e:#}"); // the reason stays in OUR log
                 let _ = tokio::time::timeout(Duration::from_secs(2), conn.closed()).await;
                 conn.close(1u32.into(), b"denied");
             }
             Err(_) => {
                 self.store.audit(&peer, "login_failed", "timeout");
-                println!("{who}: timed out");
+                warn!(peer = who, "login timed out");
                 conn.close(2u32.into(), b"timeout");
             }
         }
@@ -113,9 +114,9 @@ pub async fn serve(data_dir: &Path, upstream: SocketAddr) -> Result<()> {
     ep.online().await;
     let gate = Gate { server_id: *ep.id().as_bytes(), store: Arc::new(store), upstream };
     println!("serving, endpoint id:\n{}", ep.id());
-    println!("forwarding authenticated streams to {upstream}");
+    info!(%upstream, "forwarding authenticated streams");
     if TcpStream::connect(upstream).await.is_err() {
-        eprintln!("warning: nothing is answering at {upstream} yet; logins will work, but routes will fail until it's up");
+        warn!(%upstream, "nothing is answering upstream yet; routes will fail until it's up");
     }
     let _router = Router::builder(ep).accept(ALPN, gate).spawn();
     tokio::signal::ctrl_c().await?;

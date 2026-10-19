@@ -47,6 +47,15 @@ enum Cmd {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Logs go to stderr; stdout stays clean for output like ids and tokens.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("fidroh=info")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
     let cli = Cli::parse();
     let dir = match cli.data_dir {
         Some(dir) => dir,

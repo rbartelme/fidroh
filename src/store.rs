@@ -20,7 +20,7 @@ pub enum StoreError {
     BadId(usize),
 }
 
-/// One enrolled laptop.
+/// One enrolled device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
     pub endpoint_id: [u8; 32],
@@ -28,6 +28,7 @@ pub struct Device {
     pub routes: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct Store {
     // One connection behind a lock: login traffic is tiny, so this is plenty.
     db: Mutex<Connection>,

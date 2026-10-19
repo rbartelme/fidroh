@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     println!("flags: {:#04x}, counter bytes: {:02x?}", auth_data[32], &auth_data[33..37]);
 
     let mut signed = auth_data.clone();
-    signed.extend_from_slice(&Sha256::digest(&challenge));
+    signed.extend_from_slice(&Sha256::digest(challenge));
     let sig = Signature::from_der(&assertion.signature)?;
     let sig = sig.normalize_s();
     let key = VerifyingKey::from_sec1_bytes(&pubkey).context("Public key format")?;

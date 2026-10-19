@@ -203,6 +203,9 @@ async fn serve(data_dir: &Path, upstream: SocketAddr) -> Result<()> {
     let gate = Gate { server_id: *ep.id().as_bytes(), store: Arc::new(store), upstream };
     println!("serving, endpoint id:\n{}", ep.id());
     println!("forwarding authenticated streams to {upstream}");
+    if TcpStream::connect(upstream).await.is_err() {
+        eprintln!("warning: nothing is answering at {upstream} yet; logins will work, but routes will fail until it's up");
+    }
     let _router = Router::builder(ep).accept(ALPN, gate).spawn();
     tokio::signal::ctrl_c().await?;
     Ok(())
@@ -252,7 +255,6 @@ fn register(data_dir: &Path) -> Result<()> {
 }
 
 async fn dial(data_dir: &Path, server: EndpointId) -> Result<()> {
-    let pin = rpassword::prompt_password("FIDO2 PIN: ")?;
     let ep = bind_endpoint(data_dir).await?;
     let me: [u8; 32] = *ep.id().as_bytes();
     let conn = ep.connect(server, ALPN).await?;
@@ -270,7 +272,12 @@ async fn dial(data_dir: &Path, server: EndpointId) -> Result<()> {
 
     // Bind to the server id WE DIALED, so a different server can't reuse this signature.
     let challenge = binding(&nonce, &me, server.as_bytes());
-    let assertion = tokio::task::spawn_blocking(move || yk_sign(&pin, &challenge, &cred_id)).await??;
+    // Ask for the PIN only now that a real challenge is waiting.
+    let assertion = tokio::task::spawn_blocking(move || {
+        let pin = rpassword::prompt_password("FIDO2 PIN: ")?;
+        yk_sign(&pin, &challenge, &cred_id)
+    })
+    .await??;
     write_msg(&mut send, &Msg::Assertion(assertion)).await?;
 
     let Msg::AuthResult { ok } = read_msg(&mut recv).await? else {

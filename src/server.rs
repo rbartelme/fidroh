@@ -152,3 +152,30 @@ pub fn enroll(data_dir: &Path, name: &str, token: &str) -> Result<()> {
     println!("enrolled {name} ({:?} key)", e.alg);
     Ok(())
 }
+
+/// `fidroh devices`: list enrolled devices.
+pub fn devices(data_dir: &Path) -> Result<()> {
+    let store = Store::open(&data_dir.join("fidroh.db"))?;
+    let devices = store.list()?;
+    if devices.is_empty() {
+        println!("no devices enrolled");
+    }
+    for d in devices {
+        println!("{:<16} {}  routes: {}", d.name, hex::encode(d.endpoint_id), d.routes.join(","));
+    }
+    Ok(())
+}
+
+/// `fidroh remove`: revoke a device. Its next login is denied.
+pub fn remove(data_dir: &Path, name: &str) -> Result<()> {
+    let store = Store::open(&data_dir.join("fidroh.db"))?;
+    let device = store
+        .list()?
+        .into_iter()
+        .find(|d| d.name == name)
+        .with_context(|| format!("no device named {name:?} (see `fidroh devices`)"))?;
+    store.remove_device(&device.endpoint_id)?;
+    store.audit(&device.endpoint_id, "remove", name);
+    println!("removed {name}; its next login will be denied");
+    Ok(())
+}

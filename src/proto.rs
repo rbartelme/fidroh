@@ -51,7 +51,7 @@ pub async fn write_msg<W: AsyncWrite + Unpin>(w: &mut W, msg: &Msg) -> Result<()
     }
     // write the length with w.write_u32(...), then the bytes with w.write_all(...)
     w.write_u32(bytes.len() as u32).await?;
-    w.write(&bytes).await?;
+    w.write_all(&bytes).await?;
     // flush then OK
     w.flush().await?;
     Ok(())

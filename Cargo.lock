@@ -866,6 +866,7 @@ dependencies = [
  "anyhow",
  "ctap-hid-fido2",
  "ed25519-dalek",
+ "hex",
  "iroh",
  "p256",
  "postcard",

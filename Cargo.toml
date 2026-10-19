@@ -35,9 +35,5 @@ default = ["hardware"]
 hardware = ["dep:ctap-hid-fido2", "dep:rpassword"]
 
 [[example]]
-name = "spike"
-required-features = ["hardware"]
-
-[[example]]
-name = "spike_ed"
+name = "key_check"
 required-features = ["hardware"]

@@ -10,10 +10,10 @@ use tracing::warn;
 
 use crate::authenticator;
 use crate::enroll::Enrollment;
-use crate::fido::binding;
 use crate::keys::load_or_create;
+use crate::login::login;
 use crate::node::bind_endpoint;
-use crate::proto::{ALPN, Msg, read_msg, write_msg};
+use crate::proto::ALPN;
 use crate::routes::forward_one;
 
 /// `fidroh register`: create a credential on the security key and print the enrollment token.
@@ -35,45 +35,15 @@ pub fn register(data_dir: &Path) -> Result<()> {
 /// `fidroh connect`: log in to a server, then forward local TCP connections through it.
 pub async fn connect(data_dir: &Path, server: EndpointId, listen: SocketAddr) -> Result<()> {
     let ep = bind_endpoint(data_dir).await?;
-    let me: [u8; 32] = *ep.id().as_bytes();
+    let me = ep.id();
     let conn = ep.connect(server, ALPN).await.context(
-    "couldn't reach the server: is `fidroh serve` running there, with this id (`fidroh id` on the server)?",
+        "couldn't reach the server: is `fidroh serve` running there, with this id (`fidroh id` on the server)?",
     )?;
-    let (mut send, mut recv) = conn.open_bi().await?;
-
-    write_msg(&mut send, &Msg::Hello { version: 1 }).await?;
-    let Msg::Challenge {
-        nonce,
-        allow_credentials,
-    } = read_msg(&mut recv)
-        .await
-        .context("no challenge from server: is this laptop enrolled there?")?
-    else {
-        bail!("expected Challenge");
-    };
-    // The server lists the credentials enrolled for this laptop; use the first.
-    let cred_id = allow_credentials
-        .first()
-        .context("server sent no credentials")?
-        .clone();
-
-    // Bind to the server id WE DIALED, so a different server can't reuse this signature.
-    let challenge = binding(&nonce, &me, server.as_bytes());
-    // Ask for the PIN only now that a real challenge is waiting.
-    let assertion = tokio::task::spawn_blocking(move || {
+    login(&conn, me, server, |challenge, cred_id| {
         let pin = rpassword::prompt_password("FIDO2 PIN: ")?;
-        authenticator::sign(&pin, &challenge, &cred_id)
+        authenticator::sign(&pin, challenge, cred_id)
     })
-    .await??;
-    write_msg(&mut send, &Msg::Assertion(assertion)).await?;
-
-    let Msg::AuthResult { ok } = read_msg(&mut recv).await? else {
-        bail!("expected AuthResult");
-    };
-    if !ok {
-        conn.close(0u32.into(), b"bye");
-        bail!("login denied");
-    }
+    .await?;
     println!("logged in to {}", &server.to_string()[..8]);
 
     let listener = TcpListener::bind(listen).await?;

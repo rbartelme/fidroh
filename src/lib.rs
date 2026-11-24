@@ -1,6 +1,7 @@
 pub mod enroll;
 pub mod fido;
 pub mod keys;
+pub mod login;
 pub mod node;
 pub mod pipe;
 pub mod proto;

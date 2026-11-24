@@ -18,6 +18,8 @@ pub enum StoreError {
     UnknownAlg(String),
     #[error("stored endpoint id has {0} bytes, expected 32")]
     BadId(usize),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 /// One enrolled device.
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self, StoreError> {
+        secure_file(path)?;
         Self::init(Connection::open(path)?)
     }
 
@@ -226,6 +229,20 @@ impl Store {
     }
 }
 
+/// Create the db file as 0600, or tighten an existing one, before SQLite opens it.
+/// SQLite gives its -wal and -shm files the same mode as the database file.
+fn secure_file(path: &Path) -> std::io::Result<()> {
+    use std::fs::{OpenOptions, Permissions};
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    // append(true): create if missing, never truncate an existing db.
+    let f = OpenOptions::new().create(true).append(true).mode(0o600).open(path)?;
+    if f.metadata()?.permissions().mode() & 0o077 != 0 {
+        f.set_permissions(Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
 fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -335,5 +352,27 @@ mod tests {
             .unwrap();
         let names: Vec<String> = s.list().unwrap().into_iter().map(|d| d.name).collect();
         assert_eq!(names, vec!["desktop", "laptop"]);
+    }
+
+    #[test]
+    fn new_db_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fidroh.db");
+        Store::open(&path).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn open_db_gets_tightened() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fidroh.db");
+        std::fs::write(&path, b"").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        Store::open(&path).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }

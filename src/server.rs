@@ -1,6 +1,5 @@
 //! The gate: accepts enrolled laptops, checks their security key, then forwards streams.
 
-use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -117,7 +116,7 @@ impl Gate {
 
 /// `fidroh serve`: run the gate until Ctrl-C.
 pub async fn serve(data_dir: &Path, upstream: SocketAddr) -> Result<()> {
-    fs::create_dir_all(data_dir)?;
+    crate::keys::private_dir(data_dir)?;
     let store = Store::open(&data_dir.join("fidroh.db"))?;
     let ep = bind_endpoint(data_dir).await?;
     ep.online().await;
@@ -139,7 +138,7 @@ pub async fn serve(data_dir: &Path, upstream: SocketAddr) -> Result<()> {
 /// `fidroh enroll`: allow a laptop to log in, from its enrollment token.
 pub fn enroll(data_dir: &Path, name: &str, token: &str) -> Result<()> {
     let e = Enrollment::from_token(token)?;
-    fs::create_dir_all(data_dir)?;
+    crate::keys::private_dir(data_dir)?;
     let store = Store::open(&data_dir.join("fidroh.db"))?;
     store.enroll(
         &e.endpoint_id,
@@ -161,7 +160,12 @@ pub fn devices(data_dir: &Path) -> Result<()> {
         println!("no devices enrolled");
     }
     for d in devices {
-        println!("{:<16} {}  routes: {}", d.name, hex::encode(d.endpoint_id), d.routes.join(","));
+        println!(
+            "{:<16} {}  routes: {}",
+            d.name,
+            hex::encode(d.endpoint_id),
+            d.routes.join(",")
+        );
     }
     Ok(())
 }

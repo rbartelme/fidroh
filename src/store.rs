@@ -236,7 +236,11 @@ fn secure_file(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     // append(true): create if missing, never truncate an existing db.
-    let f = OpenOptions::new().create(true).append(true).mode(0o600).open(path)?;
+    let f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(path)?;
     if f.metadata()?.permissions().mode() & 0o077 != 0 {
         f.set_permissions(Permissions::from_mode(0o600))?;
     }

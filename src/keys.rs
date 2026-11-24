@@ -17,6 +17,24 @@ pub enum KeyError {
     Io(#[from] std::io::Error),
 }
 
+/// Create `dir` (and any missing parents) as 0700. An existing dir is left as is,
+/// with a warning if other users can read it. We don't chmod it ourselves, in case
+/// someone points --data-dir at a shared directory.
+pub fn private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    if dir.exists() {
+        let mode = fs::metadata(dir)?.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            tracing::warn!("{} is mode {mode:o}; run `chmod 700` on it", dir.display());
+        }
+        return Ok(());
+    }
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
+}
+
 /// Loads the secret key at `path`, or creates one if the file doesn't exist.
 pub fn load_or_create(path: &Path) -> Result<SecretKey, KeyError> {
     let shown = path.display().to_string();
@@ -38,7 +56,7 @@ pub fn load_or_create(path: &Path) -> Result<SecretKey, KeyError> {
     }
 
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
+        private_dir(dir)?;
     }
     let bytes: [u8; 32] = rand::random();
     let mut file = OpenOptions::new()
@@ -94,5 +112,15 @@ mod tests {
             load_or_create(&path),
             Err(KeyError::WrongLength { len: 31, .. })
         ));
+    }
+
+    #[test]
+    fn new_data_dir_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("nested/fidroh");
+        private_dir(&dir).unwrap();
+        let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
     }
 }

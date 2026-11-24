@@ -92,7 +92,7 @@ Each machine keeps its state in a data folder: `~/.local/share/fidroh` by defaul
 | `secret.key` | this machine's identity (mode 0600) | **yes**; never share or commit it |
 | `fidroh.db` | server only: enrolled laptops, credentials, audit log | public data, but guard it from tampering |
 
-Enrollment tokens and endpoint ids are public and safe to paste anywhere.
+Enrollment tokens and endpoint ids contain no secrets, but treat them like an unlisted phone number: an endpoint id is enough to find and dial your server, so share them only with people you'd enroll.
 
 ## Logging
 

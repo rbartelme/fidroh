@@ -36,7 +36,9 @@ pub fn register(data_dir: &Path) -> Result<()> {
 pub async fn connect(data_dir: &Path, server: EndpointId, listen: SocketAddr) -> Result<()> {
     let ep = bind_endpoint(data_dir).await?;
     let me: [u8; 32] = *ep.id().as_bytes();
-    let conn = ep.connect(server, ALPN).await?;
+    let conn = ep.connect(server, ALPN).await.context(
+    "couldn't reach the server: is `fidroh serve` running there, with this id (`fidroh id` on the server)?",
+    )?;
     let (mut send, mut recv) = conn.open_bi().await?;
 
     write_msg(&mut send, &Msg::Hello { version: 1 }).await?;
